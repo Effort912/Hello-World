@@ -1,0 +1,272 @@
+C51 COMPILER V9.02   ADC0832_01                                                            05/20/2020 09:24:43 PAGE 1   
+
+
+C51 COMPILER V9.02, COMPILATION OF MODULE ADC0832_01
+OBJECT MODULE PLACED IN ADC0832_01.OBJ
+COMPILER INVOKED BY: E:\keil4\C51\BIN\C51.EXE ADC0832_01.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include<reg52.h>
+   2          #include<intrins.h>
+   3          
+   4          typedef unsigned char u8;
+   5          typedef unsigned int u16;
+   6          typedef unsigned long u32;
+   7          #define LCD1602_DB P1
+   8          
+   9          sbit ADC_CLK = P2^0;
+  10          sbit ADC_DI = P2^1;
+  11          sbit ADC_DO = P2^2;
+  12          sbit ADC_CS = P3^1;
+  13          sbit LCD1602_RS = P1^0;
+  14          sbit LCD1602_RW = P1^1;
+  15          sbit LCD1602_E = P1^5;
+  16          
+  17          bit flag1000ms = 0;
+  18          unsigned char T0RH = 0;
+  19          unsigned char T0RL = 0;
+  20          unsigned char bufMove1[16];
+  21          unsigned char bufMove2[16];
+  22          static unsigned long i = 0;
+  23          u8 ss;
+  24          
+  25          void ConfigTimer0(unsigned int ms);
+  26          void InitLcd1602();
+  27          void LcdShowStr(unsigned char x, unsigned char y
+  28                                                  , unsigned char *str);
+  29          void Sum(unsigned char *LcdBuff);
+  30          unsigned char ADC0832(void);
+  31          void init(void);
+  32          void senddata_sum(void);
+  33          
+  34          void Delay(unsigned char x)
+  35          {
+  36   1              unsigned char i;
+  37   1      
+  38   1              for(i=0 ;i<x ;i++);
+  39   1      }
+  40          
+  41          void main()
+  42          {
+  43   1              unsigned char i = 0; 
+  44   1      
+  45   1              EA = 1;
+  46   1              ConfigTimer0(10);
+  47   1              InitLcd1602();
+  48   1              init();
+  49   1              while(1)
+  50   1              {
+  51   2                      ss = ADC0832();
+  52   2                      senddata_sum();
+  53   2                      if(flag1000ms)
+  54   2                      {
+  55   3                              flag1000ms = 0;
+C51 COMPILER V9.02   ADC0832_01                                                            05/20/2020 09:24:43 PAGE 2   
+
+  56   3                              Sum(bufMove1);
+  57   3                              LcdShowStr(0 ,0 ,bufMove1);
+  58   3                              LcdShowStr(0 ,1 ,bufMove2);
+  59   3                      }               
+  60   2              }
+  61   1      }
+  62          
+  63          unsigned char ADC0832(void)
+  64          {
+  65   1              u8 i ,data_c = 1;
+  66   1      
+  67   1              ADC_CS = 0;
+  68   1              ADC_DO = 0;//片选，DO为高阻态
+  69   1              for(i=0 ;i<10 ;i++);
+  70   1              ADC_CLK = 0;
+  71   1              Delay(2);
+  72   1              ADC_DI = 1;
+  73   1      
+  74   1              ADC_CLK = 1;
+  75   1              Delay(2);//第一个脉冲，起始位
+  76   1              ADC_CLK = 0;
+  77   1      
+  78   1              Delay(2);
+  79   1              ADC_DI = 1;
+  80   1      
+  81   1              ADC_CLK = 1;
+  82   1              Delay(2);//第二个脉冲，DI=1表示双通道单极性输入 
+  83   1              ADC_CLK = 0;
+  84   1      
+  85   1              Delay(2);
+  86   1              ADC_DI = 1;
+  87   1      
+  88   1              ADC_CLK = 1;
+  89   1              Delay(2);//第三个脉冲，DI=1表示选择通道1（CH2）
+  90   1              ADC_CLK = 0;
+  91   1      
+  92   1              ADC_DI = 0;
+  93   1              ADC_DO = 1;//DI  转为高阻态，DO脱离高阻态为输出数据做准备
+  94   1              ADC_CLK = 1;
+  95   1              Delay(2);
+  96   1              ADC_CLK = 0;
+  97   1              Delay(2);//经实验，这加一个脉冲AD便能正确读出数据，不加的话读出的数据少一位（最低位d0读不出）
+  98   1      
+  99   1              for(i=0 ;i<8 ;i++)
+ 100   1              {
+ 101   2                      ADC_CLK = 1;
+ 102   2                      Delay(2);
+ 103   2                      ADC_CLK = 0;
+ 104   2                      Delay(2);
+ 105   2                      data_c = (data_c<<1)|ADC_DO;
+ 106   2              }
+ 107   1              ADC_CS = 1;//取消片选一个转换周期结束
+ 108   1              return(data_c);
+ 109   1      }
+ 110          
+ 111          void senddata(unsigned char dat)
+ 112          {
+ 113   1              static unsigned char k = 0;
+ 114   1              
+ 115   1              SBUF = dat;
+ 116   1              bufMove1[k] = dat;
+ 117   1              k = (k+1)%4;
+C51 COMPILER V9.02   ADC0832_01                                                            05/20/2020 09:24:43 PAGE 3   
+
+ 118   1              while(!TI);
+ 119   1              TI = 0;
+ 120   1      }
+ 121          
+ 122          void senddata_sum()
+ 123          {
+ 124   1              senddata(ss/1000+0x30);
+ 125   1              senddata(ss%1000/100+0x30);
+ 126   1              senddata(ss%100/10+0x30);
+ 127   1              senddata(ss%10+0x30);
+ 128   1              senddata(0x0d);
+ 129   1              senddata(0x0a);
+ 130   1      }
+ 131          
+ 132          void init(void)
+ 133          {
+ 134   1              SCON = 0X50;//设定串口工作方式
+ 135   1              PCON = 0X00;//波特率不倍增
+ 136   1      
+ 137   1              TMOD = 0X20;
+ 138   1              EA = 1;
+ 139   1              ES = 1;
+ 140   1              TL1 = 0XFD;
+ 141   1              TH1 = 0XFD;//波特率为9600
+ 142   1              TR1 = 1;
+ 143   1      }
+ 144          
+ 145          void ConfigTimer0(unsigned int ms)
+ 146          {
+ 147   1              unsigned long tmp;
+ 148   1      
+ 149   1              tmp = 11059200 / 12;
+ 150   1              tmp = (tmp * ms) / 1000;
+ 151   1              tmp = 65536 -tmp;
+ 152   1              tmp = tmp + 12;
+ 153   1              T0RH = (unsigned char)(tmp >> 8);
+ 154   1              T0RL = (unsigned char) tmp;
+ 155   1              TMOD &= 0XF0;
+ 156   1              TMOD |= 0X01;
+ 157   1              TH0 = T0RH;
+ 158   1              TL0 = T0RL;
+ 159   1              ET0 = 1;
+ 160   1              TR0 = 1;
+ 161   1      }
+ 162          
+ 163          void LcdWaitReady()
+ 164          {
+ 165   1              unsigned char sta;
+ 166   1      
+ 167   1              LCD1602_DB = 0XFF;
+ 168   1              LCD1602_RS = 0;
+ 169   1              LCD1602_RW = 1;
+ 170   1              do{
+ 171   2                      LCD1602_E = 1;
+ 172   2                      sta = LCD1602_DB;
+ 173   2                      LCD1602_E = 0;
+ 174   2              }while(sta & 0x80);
+ 175   1      }
+ 176          
+ 177          
+ 178          void LcdWriteCmd(unsigned char cmd)
+ 179          {
+C51 COMPILER V9.02   ADC0832_01                                                            05/20/2020 09:24:43 PAGE 4   
+
+ 180   1              LcdWaitReady();
+ 181   1              LCD1602_RS = 0;
+ 182   1              LCD1602_RW = 0;
+ 183   1              LCD1602_DB = cmd;
+ 184   1              LCD1602_E = 1;
+ 185   1              LCD1602_E = 0;
+ 186   1      }
+ 187          
+ 188          void LcdWriteDat(unsigned char dat)
+ 189          {
+ 190   1              LcdWaitReady();
+ 191   1              LCD1602_RS = 1;
+ 192   1              LCD1602_RW = 0;
+ 193   1              LCD1602_DB = dat;
+ 194   1              LCD1602_E = 1;
+ 195   1              LCD1602_E = 0;
+ 196   1      }
+ 197          
+ 198          void LcdSetCursor(unsigned char x,unsigned char y)
+ 199          {
+ 200   1              unsigned char addr;
+ 201   1      
+ 202   1              if(y == 0)
+ 203   1                      addr = 0x00 + x;
+ 204   1              else
+ 205   1                      addr = 0x40 + x;
+ 206   1              LcdWriteCmd(addr | 0x80);
+ 207   1      
+ 208   1      }
+ 209          
+ 210          void LcdShowStr(unsigned char x, unsigned char y, unsigned char *str)
+ 211          {
+ 212   1              LcdSetCursor(x,y);
+ 213   1              while(*str != '\0')
+ 214   1              {
+ 215   2                      LcdWriteDat(*str++);
+ 216   2              }
+ 217   1      }
+ 218          
+ 219          
+ 220          void InitLcd1602()
+ 221          {
+ 222   1              LcdWriteCmd(0x38);
+ 223   1              LcdWriteCmd(0x0C);
+ 224   1              LcdWriteCmd(0x06);
+ 225   1              LcdWriteCmd(0x01);
+ 226   1      }
+ 227          
+ 228          void InterruptTimer0() interrupt 1
+ 229          {
+ 230   1              static unsigned char tmr1000ms = 0;
+ 231   1      
+ 232   1              TH0 = T0RH;
+ 233   1              TL0 = T0RL;
+ 234   1              tmr1000ms++;
+ 235   1              if(tmr1000ms >= 100)
+ 236   1              {
+ 237   2                      tmr1000ms = 0;
+ 238   2                      flag1000ms = 1;
+ 239   2                      i++;
+ 240   2              }
+ 241   1      }
+C51 COMPILER V9.02   ADC0832_01                                                            05/20/2020 09:24:43 PAGE 5   
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    582    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     41       8
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
